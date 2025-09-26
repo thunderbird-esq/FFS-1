@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Build artifacts
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# macOS
+.DS_Store
+
+# Environment
+.env
+.env.*
+secrets.yaml
+
+# Logs and Data
+pipeline_logs/
+test_data/
+api_uploads/
+
+# Output directories
+preprocessed_markdown/
+document_assets/
+final_markdown/
+markitdown_output/
+
+# Test artifacts
+htmlcov/
+.pytest_cache/
+.coverage
+*.log
+*.json
