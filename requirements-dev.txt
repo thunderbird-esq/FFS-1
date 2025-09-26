@@ -1,0 +1,12 @@
+## requirements-dev.txt ##
+## This file contains all dependencies required for running the application AND ##
+## for running the automated test suite. ##
+
+## To install: uv pip sync requirements-dev.txt ##
+### --- Main Application Dependencies --- ### 
+-r requirements.txt
+
+### --- Testing-Specific Dependencies --- ###
+pytest
+pytest-mock
+fpdf2

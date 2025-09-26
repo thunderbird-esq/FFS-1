@@ -1,0 +1,330 @@
+# Claude Code Configuration - Document Processing Pipeline
+
+# Project Metadata
+project:
+  name: "Document Processing Pipeline - HuggingFace Migration"
+  version: "1.0.0"
+  type: "ml_pipeline_deployment"
+  priority: "critical"
+  estimated_duration_minutes: 45
+
+# Execution Strategy
+execution:
+  mode: "sequential_with_fallback"
+  failure_strategy: "document_and_continue"
+  max_retries_per_phase: 3
+  global_timeout_minutes: 60
+  parallel_execution: false
+  
+  # Phase-specific configurations
+  phase_config:
+    local_assessment:
+      timeout_minutes: 15
+      continue_on_failure: true
+      required_outputs: ["dependency_analysis.log", "pipeline_test_results.json"]
+      
+    hf_migration:
+      timeout_minutes: 30
+      continue_on_failure: false
+      required_outputs: ["space_deployment_log.txt", "space_url.txt"]
+      
+    validation:
+      timeout_minutes: 10
+      continue_on_failure: false
+      required_outputs: ["validation_report.json"]
+
+# Environment Specifications
+environment:
+  # Operating System Constraints
+  os:
+    required: "Darwin 19.6.0"  # macOS Catalina 10.15.7
+    validation_command: "uname -a | grep 'Darwin 19.6.0'"
+    fallback_action: "warn_and_continue"
+    
+  # Python Environment
+  python:
+    minimum_version: "3.9.0"
+    maximum_version: "3.9.99"
+    validation_command: "python3 --version | grep -E '3\\.9\\.[0-9]+'"
+    virtual_env_required: true
+    virtual_env_path: ".venv"
+    
+  # Package Management
+  package_managers:
+    primary: "uv"
+    fallback: "pip3"
+    installation_flags:
+      uv: "--no-cache-dir --quiet"
+      pip3: "--no-cache-dir --user --quiet"
+
+# Required Environment Variables
+environment_variables:
+  required:
+    - name: "HF_TOKEN"
+      description: "HuggingFace API token with write permissions"
+      validation_pattern: "^hf_[a-zA-Z0-9]{34}$"
+      error_message: "HF_TOKEN must be valid HuggingFace token starting with 'hf_'"
+      
+    - name: "HF_USERNAME"
+      description: "HuggingFace username for space creation"
+      validation_pattern: "^[a-zA-Z0-9][a-zA-Z0-9-_]{0,38}[a-zA-Z0-9]$"
+      error_message: "HF_USERNAME must be valid HuggingFace username (alphanumeric, hyphens, underscores)"
+      
+  optional:
+    - name: "HF_SPACE_NAME"
+      description: "Custom space name (defaults to 'document-processing-pipeline')"
+      default: "document-processing-pipeline"
+      validation_pattern: "^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}[a-zA-Z0-9]$"
+
+# Dependency Management
+dependencies:
+  # Known Working Packages (Catalina Compatible)
+  working_packages:
+    - name: "pymupdf4llm"
+      version: "==0.0.5"
+      purpose: "Primary OCR engine"
+      validation_import: "pymupdf4llm"
+      
+    - name: "pymupdf"
+      version: "==1.23.26"
+      purpose: "PDF manipulation"
+      validation_import: "fitz"
+      
+    - name: "Pillow"
+      version: "==8.4.0"
+      purpose: "Image processing"
+      validation_import: "PIL"
+      
+    - name: "pytesseract"
+      version: "==0.3.10"
+      purpose: "Fallback OCR"
+      validation_import: "pytesseract"
+      
+    - name: "pdf2image"
+      version: "==3.1.0"
+      purpose: "PDF to image conversion"
+      validation_import: "pdf2image"
+      
+  # Known Problematic Packages (Avoid on Catalina)
+  problematic_packages:
+    - name: "easyocr"
+      reason: "Requires opencv-python-headless which fails to compile on Catalina"
+      alternative: "pytesseract + pdf2image"
+      
+    - name: "opencv-python-headless"
+      reason: "Requires cmake and system libraries unavailable on Catalina"
+      alternative: "Pillow for basic image operations"
+      
+    - name: "unstructured"
+      reason: "Massive dependency tree with compilation requirements"
+      alternative: "pymupdf4llm for document parsing"
+
+# Error Handling Configuration
+error_handling:
+  # Logging Configuration
+  logging:
+    level: "INFO"
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    file_output: "claude_execution.log"
+    console_output: true
+    max_file_size_mb: 100
+    backup_count: 3
+    
+  # Expected Failures (Don't Halt Execution)
+  expected_failures:
+    - pattern: "cmake.*error"
+      description: "CMake compilation errors on Catalina"
+      action: "log_and_continue"
+      
+    - pattern: "opencv.*not found"
+      description: "OpenCV installation failures"
+      action: "log_and_continue"
+      
+    - pattern: "p11-kit.*checksum"
+      description: "p11-kit checksum mismatches"
+      action: "log_and_continue"
+      
+    - pattern: "Microsoft Visual C\+\+.*required"
+      description: "Windows-specific compilation errors"
+      action: "log_and_continue"
+      
+  # Critical Failures (Halt Execution)
+  critical_failures:
+    - pattern: "HF_TOKEN.*invalid"
+      description: "Invalid HuggingFace token"
+      action: "halt_with_instructions"
+      
+    - pattern: "Space creation failed.*permissions"
+      description: "Insufficient HuggingFace permissions"
+      action: "halt_with_instructions"
+      
+    - pattern: "Out of memory"
+      description: "System memory exhaustion"
+      action: "halt_and_cleanup"
+
+# HuggingFace Specific Configuration
+huggingface:
+  # Space Configuration
+  space:
+    sdk: "gradio"
+    sdk_version: "4.12.0"
+    python_version: "3.9"
+    hardware: "cpu-basic"  # HF PRO provides upgraded hardware
+    visibility: "private"   # Always private for document processing
+    
+  # Model Selection Criteria
+  models:
+    vision:
+      primary:
+        model_id: "Salesforce/blip-image-captioning-large"
+        memory_requirement_gb: 3
+        inference_time_seconds: 4
+        fallback_model: "microsoft/git-large-coco"
+        
+      fallback:
+        model_id: "microsoft/git-large-coco"
+        memory_requirement_gb: 2
+        inference_time_seconds: 2
+        
+    text_enhancement:
+      primary:
+        model_id: "google/flan-t5-large"
+        memory_requirement_gb: 2
+        inference_time_seconds: 3
+        fallback_model: "t5-large"
+        
+      fallback:
+        model_id: "t5-large"
+        memory_requirement_gb: 2
+        inference_time_seconds: 3
+        
+  # Resource Limits (HF PRO)
+  resource_limits:
+    memory_gb: 16
+    cpu_cores: 4
+    storage_gb: 50
+    concurrent_users: 50
+    request_timeout_seconds: 300
+
+# Success Criteria
+success_criteria:
+  # Phase 1: Local Assessment
+  local_assessment:
+    required_outputs:
+      - "File inventory completed"
+      - "Dependency analysis documented"
+      - "Pipeline execution attempted"
+    success_indicators:
+      - "At least 3 working packages identified"
+      - "At least 2 problematic packages documented"
+      - "Test execution logs captured"
+      
+  # Phase 2: HuggingFace Migration  
+  hf_migration:
+    required_outputs:
+      - "HuggingFace Space created successfully"
+      - "All application files deployed"
+      - "Space builds without critical errors"
+    success_indicators:
+      - "Space URL accessible"
+      - "Gradio interface loads"
+      - "No build failures in logs"
+      
+  # Phase 3: Validation
+  validation:
+    required_outputs:
+      - "Space functionality verified"
+      - "Model loading successful"
+      - "Interface responsiveness confirmed"
+    success_indicators:
+      - "HTTP 200 response from Space URL"
+      - "Models load within timeout limits"
+      - "Interface elements render correctly"
+
+# Performance Targets
+performance:
+  # Processing Time Targets
+  processing_time:
+    small_document_pages: "1-5"
+    small_document_target_seconds: 90
+    
+    medium_document_pages: "5-20"
+    medium_document_target_seconds: 300
+    
+    large_document_pages: "20-50" 
+    large_document_target_seconds: 900
+    
+  # Quality Targets
+  quality:
+    ocr_accuracy_minimum: 70
+    ocr_accuracy_target: 85
+    
+    image_description_relevance_minimum: 60
+    image_description_relevance_target: 80
+    
+    processing_success_rate_minimum: 95
+    processing_success_rate_target: 98
+    
+  # Resource Usage Targets
+  resources:
+    memory_usage_maximum_gb: 14
+    cpu_usage_maximum_percent: 80
+    storage_usage_maximum_gb: 45
+
+# Monitoring and Alerting
+monitoring:
+  # Metrics to Track
+  metrics:
+    - name: "processing_time"
+      type: "histogram"
+      description: "Time taken to process documents"
+      
+    - name: "memory_usage"
+      type: "gauge"
+      description: "Current memory usage in GB"
+      
+    - name: "error_rate"
+      type: "counter"
+      description: "Number of processing errors"
+      
+    - name: "queue_length"
+      type: "gauge"
+      description: "Number of queued requests"
+      
+  # Alert Conditions
+  alerts:
+    - metric: "error_rate"
+      threshold: 5
+      window_minutes: 5
+      action: "log_warning"
+      
+    - metric: "memory_usage"
+      threshold: 13
+      window_minutes: 1
+      action: "trigger_garbage_collection"
+      
+    - metric: "processing_time"
+      threshold: 900
+      window_minutes: 1
+      action: "log_performance_warning"
+
+# Cleanup and Maintenance
+cleanup:
+  # Temporary Files
+  temp_files:
+    - pattern: "/tmp/hf_*"
+    - pattern: "./pipeline_test_*"
+    - pattern: "./*.log"
+    retention_hours: 24
+    
+  # Log Rotation
+  log_rotation:
+    max_size_mb: 100
+    backup_count: 5
+    compress: true
+    
+  # Model Cache Management
+  model_cache:
+    location: "/tmp/hf_cache"
+    max_size_gb: 10
+    cleanup_on_exit: false

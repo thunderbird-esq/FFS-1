@@ -1,0 +1,17 @@
+requirements.txt
+To install: uv pip sync requirements.txt
+--- Core Pipeline Dependencies ---
+pymupdf4llm
+Pillow
+pytesseract
+pdf2image
+langchain-openai
+python-dotenv
+tenacity
+markitdown[all]
+
+--- API Server Dependencies ---
+fastapi
+uvicorn[standard]
+python-multipart # Required by FastAPI for file uploads
+pytest
